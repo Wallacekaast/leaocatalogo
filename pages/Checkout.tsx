@@ -18,7 +18,10 @@ const Checkout: React.FC = () => {
     notes: ''
   });
 
-  const totalPrice = cart.reduce((acc, item) => acc + (Number(item.price || 0) * item.quantity), 0);
+  const totalPrice = cart.reduce((acc, item) => {
+    const price = Number(item.price) || 0;
+    return acc + (price * item.quantity);
+  }, 0);
 
   const handleSendOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,47 +29,62 @@ const Checkout: React.FC = () => {
     
     setLoading(true);
 
+    // 1. Tratamento do número
+    let cleanNumber = settings.whatsapp_number.replace(/\D/g, '');
+    if (cleanNumber.length <= 11 && !cleanNumber.startsWith('55')) {
+      cleanNumber = '55' + cleanNumber;
+    }
+
+    // 2. Tenta salvar no banco ANTES de ir para o WhatsApp
     try {
-      // 1. Salvar no Banco de Dados
-      const { error } = await supabase.from('orders').insert([{
+      const { error: dbError } = await supabase.from('orders').insert([{
         customer_name: formData.name,
         customer_phone: formData.phone,
         customer_city: formData.city,
         items: cart,
-        total_price: totalPrice,
-        notes: formData.notes
+        notes: formData.notes,
+        total_price: totalPrice
       }]);
 
-      if (error) throw error;
-
-      // 2. Preparar mensagem do WhatsApp
-      let message = `Olá, gostaria de fazer um pedido:\n\n`;
-      message += `*Cliente:* ${formData.name}\n`;
-      message += `*Telefone:* ${formData.phone}\n`;
-      message += `*Cidade:* ${formData.city}\n\n`;
-      message += `*Produtos:*\n`;
-      
-      cart.forEach(item => {
-        message += `- ${item.name} | Cor: ${item.selectedColor || 'N/A'} | Tecido: ${item.selectedFabric || 'N/A'} | Qtd: ${item.quantity}\n`;
-      });
-
-      if (formData.notes) {
-        message += `\n*Observações:* ${formData.notes}`;
+      if (dbError) {
+        console.error("Erro Supabase:", dbError);
+        // Se der erro de coluna ausente, avisamos o dev no console mas deixamos o cliente seguir
+        if (dbError.code === '42703') {
+          console.warn("DICA: A coluna 'total_price' ou 'customer_city' pode estar faltando na sua tabela 'orders'.");
+        }
       }
-
-      message += `\n\n*Total Estimado:* ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPrice)}`;
-
-      const whatsappUrl = `https://wa.me/${settings.whatsapp_number}?text=${encodeURIComponent(message)}`;
-      
-      // 3. Abrir WhatsApp e Limpar
-      window.open(whatsappUrl, '_blank');
-      clearCart();
-      navigate('/');
-    } catch (err: any) {
-      alert("Erro ao processar pedido: " + err.message);
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error("Erro crítico ao salvar no banco:", err);
     }
+
+    // 3. Preparar mensagem do WhatsApp
+    let message = `*NOVO PEDIDO - ${settings.store_name}*\n\n`;
+    message += `*Cliente:* ${formData.name}\n`;
+    message += `*WhatsApp:* ${formData.phone}\n`;
+    message += `*Localização:* ${formData.city}\n\n`;
+    message += `*ÍTENS DO PEDIDO:*\n`;
+    
+    cart.forEach((item, index) => {
+      const itemPrice = Number(item.price) || 0;
+      message += `${index + 1}. ${item.name}\n`;
+      message += `   - Cor: ${item.selectedColor || 'Padrão'}\n`;
+      message += `   - Tecido: ${item.selectedFabric || 'Padrão'}\n`;
+      message += `   - Qtd: ${item.quantity}\n`;
+      message += `   - Subtotal: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(itemPrice * item.quantity)}\n\n`;
+    });
+
+    if (formData.notes) message += `*Observações:* ${formData.notes}\n\n`;
+    message += `*VALOR TOTAL ESTIMADO: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPrice)}*`;
+
+    // 4. Redirecionar
+    const whatsappUrl = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+    
+    setTimeout(() => {
+      clearCart();
+      setLoading(false);
+      navigate('/');
+    }, 500);
   };
 
   if (cart.length === 0) {
@@ -97,24 +115,29 @@ const Checkout: React.FC = () => {
               <button onClick={clearCart} className="text-sm text-red-500 hover:underline font-medium">Limpar tudo</button>
             </div>
             <div className="divide-y divide-slate-100">
-              {cart.map(item => (
-                <div key={`${item.id}-${item.selectedColor}-${item.selectedFabric}`} className="p-6 flex flex-col sm:flex-row gap-6">
-                  <img src={item.images[0]} className="w-24 h-24 object-cover rounded-xl" alt={item.name} />
+              {cart.map((item, idx) => (
+                <div key={`${item.id}-${idx}`} className="p-6 flex flex-col sm:flex-row gap-6">
+                  <img src={item.images[0]} className="w-24 h-24 object-cover rounded-xl shadow-sm" alt={item.name} />
                   <div className="flex-grow">
                     <h4 className="font-bold text-slate-900">{item.name}</h4>
-                    <p className="text-slate-500 text-sm mb-2">Cor: {item.selectedColor} • Tecido: {item.selectedFabric}</p>
+                    <p className="text-slate-500 text-sm mb-2">
+                      {item.selectedColor && `Cor: ${item.selectedColor}`} 
+                      {item.selectedFabric && ` • Tecido: ${item.selectedFabric}`}
+                    </p>
                     <div className="flex items-center gap-4">
-                      <span className="text-sm font-medium text-slate-700">Qtd: {item.quantity}</span>
-                      <span className="font-bold text-brand-primary">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(item.price) * item.quantity)}</span>
+                      <span className="text-sm font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded">Qtd: {item.quantity}</span>
+                      <span className="font-bold text-brand-primary">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((Number(item.price) || 0) * item.quantity)}
+                      </span>
                     </div>
                   </div>
-                  <button onClick={() => removeFromCart(item.id)} className="p-2 text-slate-400 hover:text-red-500 self-start transition-colors"><Trash2 className="w-5 h-5" /></button>
+                  <button onClick={() => removeFromCart(item.id)} className="p-2 text-slate-300 hover:text-red-500 self-start transition-colors"><Trash2 className="w-5 h-5" /></button>
                 </div>
               ))}
             </div>
-            <div className="p-6 bg-slate-50 flex justify-between items-center">
+            <div className="p-6 bg-slate-50 flex justify-between items-center border-t border-slate-100">
               <span className="text-lg font-bold text-slate-900">Total Estimado:</span>
-              <span className="text-2xl font-bold text-brand-primary">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPrice)}</span>
+              <span className="text-2xl font-black text-brand-primary">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalPrice)}</span>
             </div>
           </div>
         </div>
@@ -122,19 +145,43 @@ const Checkout: React.FC = () => {
         <div className="lg:col-span-1">
           <form onSubmit={handleSendOrder} className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6 sticky top-28">
             <h3 className="text-xl font-serif text-slate-900 mb-4 border-b pb-4 border-slate-100 text-center uppercase tracking-widest">{settings.store_name}</h3>
-            <div><label className="block text-sm font-bold text-slate-700 mb-2">Nome Completo</label><input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-primary outline-none" placeholder="Ex: João da Silva" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} /></div>
-            <div><label className="block text-sm font-bold text-slate-700 mb-2">Seu WhatsApp</label><input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-primary outline-none" placeholder="(21) 99999-9999" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /></div>
-            <div><label className="block text-sm font-bold text-slate-700 mb-2">Cidade/Bairro</label><input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-primary outline-none" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} /></div>
-            <div><label className="block text-sm font-bold text-slate-700 mb-2">Observações</label><textarea className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-primary outline-none min-h-[80px]" placeholder="Algum detalhe especial?" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} /></div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1">Seu Nome</label>
+                <input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-primary outline-none transition-all" placeholder="Ex: João da Silva" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1">WhatsApp de Contato</label>
+                <input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-primary outline-none transition-all" placeholder="(21) 99999-9999" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1">Cidade / Bairro</label>
+                <input required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-primary outline-none transition-all" placeholder="Onde você mora?" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 mb-1">Observações (Opcional)</label>
+                <textarea className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-primary outline-none min-h-[100px] transition-all" placeholder="Algum detalhe sobre a entrega ou o móvel?" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
+              </div>
+            </div>
+
             <button 
               type="submit" 
               disabled={loading}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70"
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed group"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-              {loading ? 'Processando...' : 'Enviar Pedido WhatsApp'}
+              {loading ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                <>
+                  <Send className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                  Enviar Pedido WhatsApp
+                </>
+              )}
             </button>
-            <p className="text-center text-[10px] text-slate-400 mt-4 leading-tight">Ao clicar, seu pedido será registrado e você será levado ao WhatsApp oficial: {settings.whatsapp_number}.</p>
           </form>
         </div>
       </div>

@@ -14,14 +14,25 @@ const Contact: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Tratamento do número
+    let cleanNumber = settings.whatsapp_number.replace(/\D/g, '');
+    if (cleanNumber.length <= 11 && !cleanNumber.startsWith('55')) {
+      cleanNumber = '55' + cleanNumber;
+    }
+
     const text = `Olá, meu nome é ${formData.name}. Assunto: ${formData.subject}. Mensagem: ${formData.message}`;
-    const url = `https://wa.me/${settings.whatsapp_number}?text=${encodeURIComponent(text)}`;
+    const url = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
 
   const formatPhone = (num: string) => {
-    if (num.length === 11) {
-      return `(${num.slice(0, 2)}) ${num.slice(2, 7)}-${num.slice(7)}`;
+    const cleaned = num.replace(/\D/g, '');
+    if (cleaned.length === 11) {
+      return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 7)}-${cleaned.slice(7)}`;
+    }
+    if (cleaned.length === 13 && cleaned.startsWith('55')) {
+      return `(${cleaned.slice(2, 4)}) ${cleaned.slice(4, 9)}-${cleaned.slice(9)}`;
     }
     return num;
   };
@@ -82,15 +93,17 @@ const Contact: React.FC = () => {
               </div>
             </div>
 
-            <a 
-              href={`https://wa.me/${settings.whatsapp_number}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button 
+              onClick={() => {
+                let cleanNumber = settings.whatsapp_number.replace(/\D/g, '');
+                if (cleanNumber.length <= 11 && !cleanNumber.startsWith('55')) cleanNumber = '55' + cleanNumber;
+                window.open(`https://wa.me/${cleanNumber}`, '_blank');
+              }}
               className="flex items-center justify-center gap-3 w-full py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-2xl shadow-lg transition-all"
             >
               <MessageCircle className="w-6 h-6" />
               Falar agora no WhatsApp
-            </a>
+            </button>
           </div>
 
           {/* Contact Form */}

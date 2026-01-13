@@ -126,7 +126,7 @@ const Footer = () => {
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-16 pt-8 border-t border-slate-800 text-center text-slate-500 text-sm">
-        &copy; {new Date().getFullYear()} {settings.store_name}. Todos os direitos reservados.
+        &copy; {new Date().getFullYear()} {settings.store_name}. Todos os direitos reservados criado por WallaceKast develop. 
       </div>
     </footer>
   );
