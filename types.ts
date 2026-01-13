@@ -10,6 +10,7 @@ export interface Product {
   dimensions: string;
   images: string[];
   active: boolean;
+  is_featured?: boolean;
   created_at: string;
 }
 

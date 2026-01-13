@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, SlidersHorizontal, ArrowRight, Package } from 'lucide-react';
+import { Search, SlidersHorizontal, ArrowRight, Package, Star } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Product, Category } from '../types';
 
@@ -48,6 +48,15 @@ const Catalog: React.FC = () => {
         (p.name.toLowerCase().includes(search.toLowerCase()) || p.description.toLowerCase().includes(search.toLowerCase()))
       )
       .sort((a, b) => {
+        // Primeiro critério: Destaque (is_featured)
+        const aFeatured = a.is_featured ? 1 : 0;
+        const bFeatured = b.is_featured ? 1 : 0;
+        
+        if (aFeatured !== bFeatured) {
+          return bFeatured - aFeatured; // Destaques primeiro
+        }
+
+        // Segundo critério: Ordenação selecionada pelo usuário
         if (sortBy === 'price_asc') return a.price - b.price;
         if (sortBy === 'price_desc') return b.price - a.price;
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -120,9 +129,14 @@ const Catalog: React.FC = () => {
             <Link 
               key={product.id} 
               to={`/product/${product.id}`}
-              className="group bg-white rounded-3xl overflow-hidden border border-slate-200 hover:shadow-2xl transition-all duration-500 hover:-translate-y-2"
+              className="group bg-white rounded-3xl overflow-hidden border border-slate-200 hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 relative"
             >
               <div className="relative h-72 overflow-hidden">
+                {product.is_featured && (
+                  <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 bg-amber-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg">
+                    <Star className="w-3 h-3 fill-white" /> Destaque
+                  </div>
+                )}
                 <img 
                   src={product.images[0]} 
                   alt={product.name}
